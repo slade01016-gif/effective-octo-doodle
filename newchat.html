@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"/>
+<title>NewChat — NVIDIA NIM</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#080808;--bg2:#0e0e0e;--bg3:#141414;--bg4:#1a1a1a;
+  --border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.14);
+  --wh:#f0f0f0;--wh2:rgba(240,240,240,.6);--wh3:rgba(240,240,240,.28);
+  --red:#cc0000;--red2:#ff2222;
+  --acc:#818cf8;--acc2:rgba(129,140,248,.15);
+  --g1:#10b981;--g3:#fbbf24;
+  --f1:'Inter',sans-serif;--f2:'JetBrains Mono',monospace;
+  --r:10px;
+}
+html,body{height:100%;background:var(--bg);color:var(--wh);font-family:var(--f1);-webkit-tap-highlight-color:transparent;}
+body{display:flex;flex-direction:column;overflow:hidden;}
+@media(pointer:fine){body{cursor:none;}}
+::selection{background:var(--red);color:#fff;}
+
+/* cursor */
+#cur{position:fixed;inset:0;z-index:99999;pointer-events:none;}
+.cd{width:5px;height:5px;background:var(--red2);border-radius:50%;position:absolute;transform:translate(-50%,-50%);box-shadow:0 0 8px var(--red2);}
+.cr{width:22px;height:22px;border:1.5px solid rgba(204,0,0,.5);border-radius:50%;position:absolute;transform:translate(-50%,-50%);transition:width .15s,height .15s;}
+body.ch .cr{width:34px;height:34px;border-color:var(--red2);}
+@media(pointer:coarse){#cur{display:none;}}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+@keyframes spin{to{transform:rotate(360deg);}}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+/* header */
+header{
+  display:flex;align-items:center;gap:10px;padding:0 14px;
+  height:50px;min-height:50px;flex-shrink:0;
+  border-bottom:1px solid var(--border);
+  background:rgba(5,5,5,.96);backdrop-filter:blur(20px);z-index:100;
+}
+.logo{font-family:var(--f2);font-size:11px;letter-spacing:.18em;flex:1;}
+.logo span{color:var(--red);}
+
+/* model bar */
+.mbar{
+  display:flex;align-items:center;gap:8px;padding:8px 14px;
+  border-bottom:1px solid var(--border);background:rgba(8,8,8,.9);
+  flex-shrink:0;flex-wrap:wrap;
+}
+.mlabel{font-family:var(--f2);font-size:8px;letter-spacing:.14em;color:var(--wh3);text-transform:uppercase;white-space:nowrap;}
+.minput{
+  flex:1;min-width:180px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.09);border-radius:8px;
+  padding:7px 11px;color:var(--wh);font-family:var(--f2);font-size:11px;
+  outline:none;transition:border .2s;
+}
+.minput:focus{border-color:rgba(129,140,248,.5);}
+.msuggestions{display:flex;gap:5px;flex-wrap:wrap;}
+.msug{
+  font-family:var(--f2);font-size:8px;padding:4px 9px;border-radius:6px;
+  border:1px solid rgba(255,255,255,.07);color:var(--wh3);
+  cursor:pointer;background:rgba(255,255,255,.02);transition:all .13s;white-space:nowrap;
+}
+.msug:hover{border-color:rgba(129,140,248,.4);color:var(--acc);background:var(--acc2);}
+.msug.active{border-color:rgba(129,140,248,.5);color:var(--acc);background:var(--acc2);}
+
+/* messages */
+.messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px;}
+.messages::-webkit-scrollbar{width:3px;}
+.messages::-webkit-scrollbar-thumb{background:rgba(255,255,255,.07);border-radius:2px;}
+
+.msg{display:flex;flex-direction:column;gap:5px;animation:fadeUp .2s both;}
+.msg.user{align-items:flex-end;}
+.msg.ai{align-items:flex-start;}
+
+.bubble{
+  max-width:min(82%,640px);padding:11px 14px;border-radius:14px;
+  font-size:13.5px;line-height:1.65;word-break:break-word;
+}
+.msg.user .bubble{
+  background:var(--red);color:#fff;border-bottom-right-radius:4px;
+}
+.msg.ai .bubble{
+  background:var(--bg3);border:1px solid var(--border2);
+  color:var(--wh);border-bottom-left-radius:4px;
+}
+.msg-meta{font-family:var(--f2);font-size:8px;color:var(--wh3);padding:0 4px;}
+
+/* typing indicator */
+.typing-dot{display:inline-flex;gap:4px;padding:4px 0;}
+.typing-dot span{width:6px;height:6px;border-radius:50%;background:var(--wh3);animation:pulse .9s infinite;}
+.typing-dot span:nth-child(2){animation-delay:.2s;}
+.typing-dot span:nth-child(3){animation-delay:.4s;}
+
+/* code blocks inside bubbles */
+.code-wrap{
+  margin:10px 0;border-radius:var(--r);overflow:hidden;
+  border:1px solid rgba(255,255,255,.1);
+}
+.code-header{
+  display:flex;align-items:center;gap:8px;padding:7px 12px;
+  background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.07);
+}
+.code-lang{font-family:var(--f2);font-size:9px;color:var(--acc);letter-spacing:.1em;text-transform:uppercase;flex:1;}
+.code-actions{display:flex;gap:6px;}
+.code-btn{
+  font-family:var(--f2);font-size:8px;padding:3px 9px;border-radius:5px;
+  cursor:pointer;border:1px solid;transition:all .13s;
+}
+.code-btn.copy{border-color:rgba(255,255,255,.12);color:var(--wh2);background:transparent;}
+.code-btn.copy:hover{border-color:var(--border2);color:var(--wh);}
+.code-btn.preview{border-color:rgba(129,140,248,.3);color:var(--acc);background:var(--acc2);}
+.code-btn.preview:hover{background:rgba(129,140,248,.25);}
+.code-pre{
+  padding:13px 14px;font-family:var(--f2);font-size:11.5px;
+  line-height:1.7;color:rgba(240,240,240,.85);white-space:pre;
+  overflow-x:auto;background:var(--bg2);tab-size:2;
+  max-height:380px;overflow-y:auto;
+}
+.code-pre::-webkit-scrollbar{width:3px;height:3px;}
+.code-pre::-webkit-scrollbar-thumb{background:rgba(255,255,255,.07);}
+
+/* inline code */
+.inline-code{
+  font-family:var(--f2);font-size:11.5px;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);
+  border-radius:4px;padding:1px 6px;color:var(--acc);
+}
+
+/* input area */
+.ibar{
+  padding:10px 14px;border-top:1px solid var(--border);
+  background:rgba(8,8,8,.95);flex-shrink:0;
+}
+.irow{display:flex;gap:8px;align-items:flex-end;}
+.iinput{
+  flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);
+  border-radius:var(--r);padding:10px 13px;color:var(--wh);
+  font-family:var(--f1);font-size:13px;outline:none;resize:none;
+  max-height:120px;line-height:1.55;transition:border .2s;min-height:42px;
+}
+.iinput:focus{border-color:rgba(129,140,248,.4);}
+.iinput::placeholder{color:var(--wh3);}
+.send-btn{
+  height:42px;min-width:46px;background:var(--red);border:none;border-radius:var(--r);
+  color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:all .2s;
+}
+.send-btn:hover:not(:disabled){background:#dd0000;box-shadow:0 0 18px rgba(204,0,0,.4);}
+.send-btn:disabled{opacity:.35;cursor:not-allowed;}
+.send-btn svg{width:16px;height:16px;fill:#fff;}
+.clear-btn{
+  height:42px;min-width:42px;background:rgba(255,255,255,.04);
+  border:1px solid var(--border);border-radius:var(--r);
+  color:var(--wh3);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:all .2s;font-size:16px;
+}
+.clear-btn:hover{border-color:var(--border2);color:var(--wh);}
+
+/* preview overlay */
+.prev-overlay{
+  position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.92);
+  backdrop-filter:blur(8px);display:none;flex-direction:column;
+}
+.prev-overlay.show{display:flex;}
+.prev-bar{
+  display:flex;align-items:center;gap:10px;padding:10px 16px;
+  background:#000;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0;
+}
+.prev-title{font-family:var(--f2);font-size:9px;color:var(--wh2);flex:1;}
+.prev-close{
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+  border-radius:7px;padding:6px 14px;color:var(--wh2);
+  font-family:var(--f2);font-size:9px;cursor:pointer;transition:all .15s;
+}
+.prev-close:hover{background:rgba(255,255,255,.1);}
+.prev-frame{flex:1;border:none;width:100%;background:#fff;}
+
+/* empty state */
+.empty{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:12px;text-align:center;padding:30px;
+  animation:fadeUp .4s both;
+}
+.empty-icon{font-family:var(--f2);font-size:40px;color:rgba(204,0,0,.1);}
+.empty-title{font-size:15px;font-weight:600;color:var(--wh);}
+.empty-sub{font-size:12px;color:var(--wh2);max-width:300px;line-height:1.7;}
+</style>
+</head>
+<body>
+
+<div id="cur"><div class="cd" id="cd"></div><div class="cr" id="cr"></div></div>
+
+<!-- Preview overlay -->
+<div class="prev-overlay" id="prevOverlay">
+  <div class="prev-bar">
+    <span class="prev-title" id="prevTitle">Code Preview</span>
+    <button class="prev-close" onclick="closePreview()">✕ Close</button>
+  </div>
+  <iframe class="prev-frame" id="prevFrame" sandbox="allow-scripts"></iframe>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="logo"><span>//</span> NewChat · NVIDIA NIM</div>
+</header>
+
+<!-- Model bar -->
+<div class="mbar">
+  <span class="mlabel">Model</span>
+  <input class="minput" id="modelInput" value="deepseek-ai/deepseek-v3.2"
+    placeholder="e.g. deepseek-ai/deepseek-v3.2" spellcheck="false"/>
+  <div class="msuggestions">
+    <div class="msug" onclick="setModel(this,'deepseek-ai/deepseek-v3.2')">DS-V3.2</div>
+    <div class="msug" onclick="setModel(this,'deepseek-ai/deepseek-v3.1-terminus')">DS-V3.1</div>
+    <div class="msug" onclick="setModel(this,'mistralai/mistral-large-3-675b-instruct-2512')">Mistral</div>
+    <div class="msug" onclick="setModel(this,'qwen/qwen3-coder-480b-a35b-instruct')">QwenCoder</div>
+    <div class="msug" onclick="setModel(this,'qwen/qwen3.5-122b-a10b')">Qwen3.5</div>
+    <div class="msug" onclick="setModel(this,'stepfun-ai/step-3.5-flash')">Step</div>
+    <div class="msug" onclick="setModel(this,'z-ai/glm4.7')">GLM-4.7</div>
+    <div class="msug" onclick="setModel(this,'mistralai/devstral-2-123b-instruct-2512')">Devstral</div>
+  </div>
+</div>
+
+<!-- Messages -->
+<div class="messages" id="messages">
+  <div class="empty" id="emptyState">
+    <div class="empty-icon">⟨/⟩</div>
+    <div class="empty-title">Chat with any NVIDIA NIM model</div>
+    <div class="empty-sub">Type a message below. If the AI returns code you'll get a Preview button to see it live.</div>
+  </div>
+</div>
+
+<!-- Input bar -->
+<div class="ibar">
+  <div class="irow">
+    <button class="clear-btn" onclick="clearChat()" title="Clear chat">↺</button>
+    <textarea class="iinput" id="msgInput" rows="1"
+      placeholder="Message…"
+      onkeydown="onKey(event)"
+      oninput="autoResize(this)"></textarea>
+    <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+// ══ CURSOR ══
+const cdEl=document.getElementById('cd'),crEl=document.getElementById('cr');
+document.addEventListener('mousemove',e=>{cdEl.style.left=e.clientX+'px';cdEl.style.top=e.clientY+'px';crEl.style.left=e.clientX+'px';crEl.style.top=e.clientY+'px';});
+document.querySelectorAll('button,textarea,input,.msug').forEach(el=>{
+  el.addEventListener('mouseenter',()=>document.body.classList.add('ch'));
+  el.addEventListener('mouseleave',()=>document.body.classList.remove('ch'));
+});
+
+// ══ STATE ══
+let messages = [];
+let streaming = false;
+let previewCode = '';
+
+// ══ UTILS ══
+function autoResize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px';}
+function onKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function scrollBottom(){const m=document.getElementById('messages');m.scrollTop=m.scrollHeight;}
+
+function setModel(el, model){
+  document.getElementById('modelInput').value = model;
+  document.querySelectorAll('.msug').forEach(s=>s.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function clearChat(){
+  messages=[];
+  document.getElementById('messages').innerHTML=`
+    <div class="empty" id="emptyState">
+      <div class="empty-icon">⟨/⟩</div>
+      <div class="empty-title">Chat with any NVIDIA NIM model</div>
+      <div class="empty-sub">Type a message below. If the AI returns code you'll get a Preview button to see it live.</div>
+    </div>`;
+}
+
+// ══ RENDER MARKDOWN-LITE ══
+// Converts AI text to HTML with code blocks, inline code, bold
+function renderText(raw){
+  let html = '';
+  const lines = raw.split('\n');
+  let inCode = false, codeLang = '', codeLines = [], codeIdx = 0;
+
+  function flushCode(){
+    if(!codeLines.length) return '';
+    const id = 'code-'+(++codeIdx)+'-'+Date.now();
+    const lang = codeLang||'text';
+    const content = codeLines.join('\n');
+    const escapedContent = esc(content);
+    const isPreviewable = ['html','css','js','javascript','svg'].includes(lang.toLowerCase())
+      || content.includes('<!DOCTYPE') || content.includes('<html');
+    const previewBtn = isPreviewable
+      ? `<button class="code-btn preview" onclick="previewCode(${JSON.stringify(content)})">▶ Preview</button>`
+      : '';
+    return `<div class="code-wrap">
+      <div class="code-header">
+        <span class="code-lang">${esc(lang)}</span>
+        <div class="code-actions">
+          <button class="code-btn copy" onclick="copyFromBlock(this)">Copy</button>
+          ${previewBtn}
+        </div>
+      </div>
+      <pre class="code-pre" id="${id}">${escapedContent}</pre>
+    </div>`;
+  }
+
+  let paraLines = [];
+  function flushPara(){
+    if(!paraLines.length) return '';
+    let p = paraLines.join('\n');
+    // Bold
+    p = p.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+    // Inline code
+    p = p.replace(/`([^`]+)`/g,'<span class="inline-code">$1</span>');
+    paraLines = [];
+    return '<p style="margin:4px 0">'+p+'</p>';
+  }
+
+  let out = '';
+  for(let i=0;i<lines.length;i++){
+    const line = lines[i];
+    if(!inCode && line.startsWith('```')){
+      out += flushPara();
+      inCode = true;
+      codeLang = line.slice(3).trim();
+      codeLines = [];
+      continue;
+    }
+    if(inCode && line.startsWith('```')){
+      out += flushCode();
+      inCode = false; codeLang=''; codeLines=[];
+      continue;
+    }
+    if(inCode){ codeLines.push(line); continue; }
+
+    // headings
+    if(line.startsWith('### ')){out+=flushPara();out+=`<h4 style="margin:10px 0 4px;font-size:13px;color:var(--wh)">${esc(line.slice(4))}</h4>`;continue;}
+    if(line.startsWith('## ')){out+=flushPara();out+=`<h3 style="margin:12px 0 4px;font-size:14px;color:var(--wh)">${esc(line.slice(3))}</h3>`;continue;}
+    // list
+    if(line.match(/^[\-\*] /)){
+      out+=flushPara();
+      let item=line.slice(2);
+      item=item.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+      item=item.replace(/`([^`]+)`/g,'<span class="inline-code">$1</span>');
+      out+=`<div style="padding:2px 0 2px 14px;position:relative"><span style="position:absolute;left:0;color:var(--red2)">›</span>${item}</div>`;
+      continue;
+    }
+    if(line.trim()===''){out+=flushPara();continue;}
+    paraLines.push(esc(line));
+  }
+  if(inCode) out+=flushCode();
+  out+=flushPara();
+  return out;
+}
+
+// ══ ADD MESSAGE TO DOM ══
+function addMessage(role, content, model){
+  document.getElementById('emptyState')?.remove();
+  const wrap = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg '+role;
+  const meta = role==='user' ? 'You' : (model||'AI');
+  const bubbleContent = role==='user'
+    ? esc(content).replace(/\n/g,'<br>')
+    : renderText(content);
+  div.innerHTML=`
+    <div class="bubble">${bubbleContent}</div>
+    <div class="msg-meta">${esc(meta)}</div>`;
+  wrap.appendChild(div);
+  scrollBottom();
+  return div;
+}
+
+// ══ STREAMING AI BUBBLE ══
+function addStreamingBubble(model){
+  document.getElementById('emptyState')?.remove();
+  const wrap = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className='msg ai';
+  div.innerHTML=`<div class="bubble" id="streamBubble"><div class="typing-dot"><span></span><span></span><span></span></div></div><div class="msg-meta">${esc(model)}</div>`;
+  wrap.appendChild(div);
+  scrollBottom();
+  return div;
+}
+
+// ══ SEND ══
+async function sendMessage(){
+  if(streaming) return;
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if(!text) return;
+  const model = document.getElementById('modelInput').value.trim() || 'deepseek-ai/deepseek-v3.2';
+
+  input.value=''; autoResize(input);
+  document.getElementById('sendBtn').disabled=true;
+  streaming=true;
+
+  // Add user message
+  messages.push({role:'user',content:text});
+  addMessage('user',text);
+
+  // Add streaming bubble
+  const aiBubble = addStreamingBubble(model);
+  const bubbleEl = document.getElementById('streamBubble');
+
+  let fullText = '';
+
+  try{
+    const res = await fetch('/chat',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model,messages,max_tokens:4096})
+    });
+
+    if(!res.ok){
+      const err=await res.json();
+      bubbleEl.innerHTML=`<span style="color:#ff6b6b">Error: ${esc(err.error||'Server error')}</span>`;
+      streaming=false;document.getElementById('sendBtn').disabled=false;return;
+    }
+
+    const reader=res.body.getReader();
+    const decoder=new TextDecoder();
+    let buf='';
+
+    while(true){
+      const{value,done}=await reader.read();
+      if(done) break;
+      buf+=decoder.decode(value,{stream:true});
+      const lines=buf.split('\n');
+      buf=lines.pop()||'';
+      for(const line of lines){
+        const t=line.trim();
+        if(!t.startsWith('data: ')) continue;
+        const payload=t.slice(6);
+        if(payload==='[DONE]') break;
+        try{
+          const chunk=JSON.parse(payload);
+          if(chunk.error){bubbleEl.innerHTML=`<span style="color:#ff6b6b">Error: ${esc(chunk.error)}</span>`;break;}
+          if(chunk.content){fullText+=chunk.content;bubbleEl.innerHTML=renderText(fullText);scrollBottom();}
+        }catch(e){}
+      }
+    }
+
+    if(fullText){
+      messages.push({role:'assistant',content:fullText});
+      bubbleEl.innerHTML=renderText(fullText);
+    }else if(!bubbleEl.innerHTML.includes('Error')){
+      bubbleEl.innerHTML='<span style="color:var(--wh3);font-style:italic">No response</span>';
+    }
+
+  }catch(e){
+    bubbleEl.innerHTML=`<span style="color:#ff6b6b">Error: ${esc(e.message)}</span>`;
+  }
+
+  streaming=false;
+  document.getElementById('sendBtn').disabled=false;
+  scrollBottom();
+}
+
+// ══ COPY CODE BLOCK ══
+function copyFromBlock(btn){
+  const pre=btn.closest('.code-wrap').querySelector('.code-pre');
+  navigator.clipboard.writeText(pre.textContent).then(()=>{
+    const orig=btn.textContent;
+    btn.textContent='✓ Copied';
+    setTimeout(()=>btn.textContent=orig,1500);
+  });
+}
+
+// ══ PREVIEW ══
+function previewCode(code){
+  const frame=document.getElementById('prevFrame');
+  const overlay=document.getElementById('prevOverlay');
+  document.getElementById('prevTitle').textContent='Code Preview';
+  // Auto-wrap plain CSS/JS in a basic HTML shell
+  let html=code;
+  if(!code.includes('<html') && !code.includes('<!DOCTYPE')){
+    if(code.trim().startsWith('{')||code.trim().match(/^[a-z\*\.\#]/i)){
+      // Looks like CSS
+      html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${code}</style></head><body><p style="color:#888;font-family:sans-serif;padding:20px">CSS preview — add HTML content to see it styled.</p></body></html>`;
+    }else{
+      // Looks like JS
+      html=`<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><script>${code}<\/script></body></html>`;
+    }
+  }
+  overlay.classList.add('show');
+  const blob=new Blob([html],{type:'text/html'});
+  frame.src=URL.createObjectURL(blob);
+}
+function closePreview(){
+  document.getElementById('prevOverlay').classList.remove('show');
+  document.getElementById('prevFrame').src='about:blank';
+}
+</script>
+</body>
+</html>
